@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>班級成績紀錄系統</title>
+  <style>
+    body { font-family: 'Segoe UI', Microsoft JhengHei, sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
+    .container { max-width: 960px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    h2 { text-align: center; color: #2c3e50; margin-bottom: 15px; }
+    .auth-bar { text-align: center; margin-bottom: 20px; padding: 12px; background: #ebf5fb; border-radius: 6px; }
+    .auth-bar input { padding: 8px; border: 1px solid #bdc3c7; border-radius: 4px; margin-right: 8px; }
+    .auth-bar button { padding: 8px 16px; font-size: 14px; background-color: #2980b9; }
+    .auth-bar button:hover { background-color: #2471a3; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    th, td { border: 1px solid #dce1e5; padding: 10px; text-align: center; }
+    th { background-color: #34495e; color: white; font-weight: 600; }
+    tr:nth-child(even) { background-color: #f9fbfb; }
+    .badge-m { background-color: #d6eaf8; color: #21618c; padding: 3px 8px; border-radius: 12px; font-size: 0.85em; }
+    .badge-f { background-color: #fadbd8; color: #943126; padding: 3px 8px; border-radius: 12px; font-size: 0.85em; }
+    input[type="number"] { width: 65px; padding: 6px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-size: 15px; }
+    input[type="number"]:focus { outline: none; border-color: #3498db; box-shadow: 0 0 5px rgba(52,152,219,0.3); }
+    .fail { color: #e74c3c; font-weight: bold; background-color: #fdedec; }
+    .calc-cell { font-weight: bold; color: #2c3e50; }
+    .footer-row { background-color: #eaeded !important; font-weight: bold; }
+    .btn-group { text-align: center; margin-top: 20px; }
+    button { background-color: #27ae60; color: white; border: none; padding: 12px 30px; font-size: 16px; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
+    button:hover { background-color: #219150; }
+    button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+    #status { text-align: center; margin-top: 15px; font-weight: bold; color: #2980b9; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>📊 班級五科成績紀錄表</h2>
+
+  <!-- 密碼驗證區 -->
+  <div class="auth-bar">
+    <label for="tokenInput"><strong>系統通行密碼：</strong></label>
+    <input type="password" id="tokenInput" placeholder="請輸入密碼以載入資料">
+    <button onclick="loadData()">🔓 載入成績</button>
+  </div>
+  
+  <div style="overflow-x:auto;">
+    <table id="gradeTable">
+      <thead>
+        <tr>
+          <th>座號</th><th>姓名</th><th>性別</th>
+          <th>國文</th><th>數學</th><th>英文</th><th>自然</th><th>社會</th>
+          <th>總分</th><th>平均</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="10">請先在上方輸入通行密碼並點擊「載入成績」</td></tr>
+      </tbody>
+      <tfoot>
+        <tr class="footer-row">
+          <td colspan="3">各科班平均</td>
+          <td id="avg-0">-</td><td id="avg-1">-</td><td id="avg-2">-</td><td id="avg-3">-</td><td id="avg-4">-</td>
+          <td id="avg-total">-</td><td id="avg-all">-</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="btn-group">
+    <button id="saveBtn" onclick="submitData()" disabled>💾 儲存成績至試算表</button>
+  </div>
+  <div id="status"></div>
+</div>
+
+<script>
+  // ⚠️ 請將下方網址替換成你自己的 Google Apps Script 部署網址
+  const GAS_API_URL = "https://script.google.com/macros/s/你的部署ID/exec";
+  
+  let studentList = [];
+
+  // 透過 GET 請求向 GAS 讀取資料
+  async function loadData() {
+    const token = document.getElementById('tokenInput').value.trim();
+    const status = document.getElementById('status');
+    
+    if (!token) {
+      alert('請先輸入通行密碼！');
+      return;
+    }
+
+    status.innerText = '⏳ 正在從 Google 試算表載入資料...';
+    
+    try {
+      const response = await fetch(`${GAS_API_URL}?token=${encodeURIComponent(token)}`);
+      const result = await response.json();
+
+      if (result.status === 'success') {
+        renderTable(result.data);
+        document.getElementById('saveBtn').disabled = false;
+        status.innerText = '✅ 資料載入成功！';
+      } else {
+        status.innerText = '❌ ' + result.message;
+      }
+    } catch (err) {
+      status.innerText = '❌ 連線失敗，請檢查 API 網址或網路狀態：' + err;
+    }
+  }
+
+  function renderTable(data) {
+    studentList = data;
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = '';
+
+    data.forEach((row, rIndex) => {
+      const tr = document.createElement('tr');
+      const genderBadge = row[2] === '男' ? `<span class="badge-m">男</span>` : `<span class="badge-f">女</span>`;
+
+      let html = `<td>${row[0]}</td><td><strong>${row[1]}</strong></td><td>${genderBadge}</td>`;
+
+      for (let c = 0; c < 5; c++) {
+        const val = row[c + 3] !== '' ? row[c + 3] : '';
+        const failClass = (val !== '' && Number(val) < 60) ? 'fail' : '';
+        html += `
+          <td>
+            <input type="number" min="0" max="100" 
+                   class="score-input ${failClass}" 
+                   data-row="${rIndex}" data-col="${c}" 
+                   value="${val}" 
+                   oninput="onScoreChange(this)">
+          </td>
+        `;
+      }
+
+      html += `<td class="calc-cell" id="total-${rIndex}">0</td><td class="calc-cell" id="avg-row-${rIndex}">0</td>`;
+      tr.innerHTML = html;
+      tbody.appendChild(tr);
+      calculateRow(rIndex);
+    });
+    calculateClassAverage();
+  }
+
+  function onScoreChange(input) {
+    const val = input.value;
+    if (val !== '' && Number(val) < 60) {
+      input.classList.add('fail');
+    } else {
+      input.classList.remove('fail');
+    }
+    const rIndex = input.getAttribute('data-row');
+    calculateRow(rIndex);
+    calculateClassAverage();
+  }
+
+  function calculateRow(rIndex) {
+    const inputs = document.querySelectorAll(`input[data-row="${rIndex}"]`);
+    let sum = 0, count = 0;
+    inputs.forEach(inp => {
+      if (inp.value !== '') { sum += Number(inp.value); count++; }
+    });
+    const avg = count > 0 ? (sum / count).toFixed(1) : 0;
+    document.getElementById(`total-${rIndex}`).innerText = sum;
+    document.getElementById(`avg-row-${rIndex}`).innerText = avg;
+  }
+
+  function calculateClassAverage() {
+    for (let c = 0; c < 5; c++) {
+      const inputs = document.querySelectorAll(`input[data-col="${c}"]`);
+      let sum = 0, count = 0;
+      inputs.forEach(inp => {
+        if (inp.value !== '') { sum += Number(inp.value); count++; }
+      });
+      document.getElementById(`avg-${c}`).innerText = count > 0 ? (sum / count).toFixed(1) : '-';
+    }
+  }
+
+  // 透過 POST 請求將資料傳回 GAS 儲存
+  async function submitData() {
+    const token = document.getElementById('tokenInput').value.trim();
+    const btn = document.getElementById('saveBtn');
+    const status = document.getElementById('status');
+
+    btn.disabled = true;
+    status.innerText = '⏳ 正在儲存中，請稍候...';
+
+    const updatedRecords = studentList.map((row, rIndex) => {
+      const inputs = document.querySelectorAll(`input[data-row="${rIndex}"]`);
+      const scores = Array.from(inputs).map(inp => inp.value === '' ? '' : Number(inp.value));
+      const total = Number(document.getElementById(`total-${rIndex}`).innerText);
+      const avg = Number(document.getElementById(`avg-row-${rIndex}`).innerText);
+      return [row[0], row[1], row[2], ...scores, total, avg];
+    });
+
+    try {
+      // 注意：GAS 跨域 POST 需使用 text/plain 避免觸發瀏覽器 CORS 預檢 (OPTIONS) 錯誤
+      const response = await fetch(GAS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ token: token, records: updatedRecords })
+      });
+      
+      const result = await response.json();
+      if (result.status === 'success') {
+        status.innerText = '✅ ' + result.message;
+      } else {
+        status.innerText = '❌ ' + result.message;
+      }
+    } catch (err) {
+      status.innerText = '❌ 儲存失敗：' + err;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+</script>
+
+</body>
+</html>
